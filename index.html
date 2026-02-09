@@ -10,27 +10,67 @@
   <style>
     body {
       font-family: 'Inter', 'Noto+Sans+SC', sans-serif;
+      margin: 0;
+      padding: 0;
     }
     .serif {
       font-family: 'Lora', 'Noto+Sans+SC', serif;
+    }
+    /* 初始加载动画 */
+    #initial-loader {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: white;
+      z-index: 9999;
+      transition: opacity 0.5s ease;
+    }
+    .loader-dot {
+      width: 8px;
+      height: 8px;
+      background: #4f46e5;
+      border-radius: 50%;
+      margin: 0 4px;
+      animation: bounce 0.6s infinite alternate;
+    }
+    .loader-dot:nth-child(2) { animation-delay: 0.2s; }
+    .loader-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      from { transform: translateY(0); opacity: 0.3; }
+      to { transform: translateY(-10px); opacity: 1; }
     }
   </style>
 <script type="importmap">
 {
   "imports": {
-    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
-    "react/": "https://esm.sh/react@^19.2.4/",
-    "react": "https://esm.sh/react@^19.2.4",
-    "@google/genai": "https://esm.sh/@google/genai@^1.40.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.463.0",
+    "@google/genai": "https://esm.sh/@google/genai@1.40.0",
     "epubjs": "https://esm.sh/epubjs@0.3.93",
     "jszip": "https://esm.sh/jszip@3.10.1",
-    "pdfjs-dist": "https://esm.sh/pdfjs-dist@4.10.38"
+    "pdfjs-dist": "https://esm.sh/pdfjs-dist@4.10.38",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/"
   }
 }
 </script>
+<script>
+  // 处理 process.env 引用崩溃问题
+  if (typeof window !== 'undefined') {
+    window.process = window.process || { env: {} };
+  }
+</script>
 </head>
 <body class="bg-gray-50 text-gray-900 overflow-hidden">
+  <div id="initial-loader">
+    <div class="loader-dot"></div>
+    <div class="loader-dot"></div>
+    <div class="loader-dot"></div>
+  </div>
   <div id="root"></div>
 </body>
 </html>

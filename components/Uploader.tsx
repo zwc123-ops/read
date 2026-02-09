@@ -1,21 +1,12 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Upload, Book as BookIcon, Loader2, AlertCircle, ShieldAlert } from 'lucide-react';
 import { Book } from '../types';
 import { ocrImage } from '../services/aiService';
-// @ts-ignore
-import e from 'epubjs';
-// @ts-ignore
-import * as pdfjsLib from 'pdfjs-dist';
 
-// 防御性配置 PDF Worker
-try {
-  if (pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.mjs';
-  }
-} catch (err) {
-  console.warn("PDF Worker 配置延迟或失败，可能由于库未加载完毕:", err);
-}
+// 动态加载依赖以提高稳定性
+const loadEpub = () => import('epubjs');
+const loadPdf = () => import('pdfjs-dist');
 
 interface UploaderProps {
   onUpload: (book: Book) => void;
@@ -28,11 +19,13 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const extractPdfText = async (arrayBuffer: ArrayBuffer): Promise<string> => {
-    if (!pdfjsLib || !pdfjsLib.getDocument) {
-      throw new Error("PDF 引擎尚未就绪，请稍后刷新重试。");
+    const pdfjs = await loadPdf();
+    // 动态设置 worker
+    if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+      pdfjs.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.mjs';
     }
 
-    const loadingTask = pdfjsLib.getDocument({ 
+    const loadingTask = pdfjs.getDocument({ 
       data: arrayBuffer,
       cMapUrl: 'https://unpkg.com/pdfjs-dist@4.10.38/cmaps/', 
       cMapPacked: true,
@@ -47,7 +40,7 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
     for (let i = 1; i <= maxPages; i++) {
       try {
         const page = await pdf.getPage(i);
-        const textContent = await (page as any).getTextContent();
+        const textContent = await page.getTextContent();
         
         let lastY = -1;
         let pageLines: string[] = [];
@@ -73,22 +66,21 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
     
     const finalResult = fullText.trim();
     if (finalResult.length < 50 && pdf.numPages > 0) {
-      throw new Error("该 PDF 可能是扫描图片或受限。请尝试截图后直接上传图片进行 OCR 识别。");
+      throw new Error("该 PDF 可能是扫描图片。请直接上传图片进行 OCR 识别。");
     }
     return finalResult;
   };
 
   const extractEpubText = async (arrayBuffer: ArrayBuffer): Promise<{ text: string, title: string, author: string }> => {
-    if (!e) throw new Error("EPUB 引擎加载失败。");
-    
+    const e = await loadEpub();
     // @ts-ignore
-    const book = e(arrayBuffer);
+    const book = e.default ? e.default(arrayBuffer) : e(arrayBuffer);
     const bookObj = book as any;
     
     try {
       await bookObj.opened;
     } catch (err) {
-      throw new Error("EPUB 文件解析失败，可能格式有误。");
+      throw new Error("EPUB 文件解析失败。");
     }
     
     const metadata = bookObj.package?.metadata || {};
@@ -259,8 +251,8 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
         {isProcessing && (
           <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-10 flex flex-col items-center justify-center animate-in fade-in duration-300">
             <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mb-4" />
-            <p className="font-bold text-gray-800 text-lg">智能解析中...</p>
-            <p className="text-xs text-gray-400 mt-2 px-10">AI 正在努力识别和排版内容</p>
+            <p className="font-bold text-gray-800 text-lg">正在智能解析...</p>
+            <p className="text-xs text-gray-400 mt-2 px-10">AI 正在努力识别和排版，这可能需要几秒钟</p>
           </div>
         )}
 
@@ -270,7 +262,7 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
         
         <h2 className="text-2xl font-bold text-gray-800 mb-2">添加书籍或书页照片</h2>
         <p className="text-gray-400 mb-8 max-w-xs mx-auto text-sm leading-relaxed">
-          支持 EPUB, PDF, 图片, TXT。<br/>您可以直接拍摄书页照片。
+          支持 EPUB, PDF, 图片, TXT。<br/>您可以直接拍摄书页照片进行 OCR 识别。
         </p>
         
         <label className="cursor-pointer bg-indigo-600 text-white px-10 py-3.5 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-95 flex items-center gap-2">
