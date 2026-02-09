@@ -1,0 +1,5 @@
+{
+  "name": "LinguistReader AI",
+  "description": "An intelligent English eBook reader that provides deep grammatical analysis, structural breakdowns, and word insights using Gemini AI.",
+  "requestFramePermissions": []
+}
