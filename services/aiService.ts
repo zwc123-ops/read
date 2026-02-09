@@ -47,21 +47,24 @@ function extractSources(response: any): { title: string; url: string }[] {
   return Array.from(new Map(sources.map(s => [s.url, s])).values());
 }
 
+// Fixed ocrImage to use correct multimodal content structure
 export async function ocrImage(base64Data: string, mimeType: string): Promise<string> {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: [
-      {
-        inlineData: {
-          data: base64Data.split(',')[1] || base64Data,
-          mimeType: mimeType
+    contents: {
+      parts: [
+        {
+          inlineData: {
+            data: base64Data.split(',')[1] || base64Data,
+            mimeType: mimeType
+          }
+        },
+        {
+          text: "Please transcribe all English text from this image accurately. Maintain the paragraph structure. Output only the transcribed text, nothing else."
         }
-      },
-      {
-        text: "Please transcribe all English text from this image accurately. Maintain the paragraph structure. Output only the transcribed text, nothing else."
-      }
-    ]
+      ]
+    }
   });
   return response.text || "";
 }
