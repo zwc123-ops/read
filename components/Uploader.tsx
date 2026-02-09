@@ -1,6 +1,6 @@
 
-import React, { useState, useRef } from 'react';
-import { Upload, Book as BookIcon, Loader2, FileDown, AlertCircle, ShieldAlert, Image as ImageIcon } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Upload, Book as BookIcon, Loader2, AlertCircle, ShieldAlert } from 'lucide-react';
 import { Book } from '../types';
 import { ocrImage } from '../services/aiService';
 // @ts-ignore
@@ -8,10 +8,13 @@ import e from 'epubjs';
 // @ts-ignore
 import * as pdfjsLib from 'pdfjs-dist';
 
+// 防御性配置 PDF Worker
 try {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.mjs';
+  if (pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@4.10.38/build/pdf.worker.mjs';
+  }
 } catch (err) {
-  console.warn("PDF Worker 配置失败:", err);
+  console.warn("PDF Worker 配置延迟或失败，可能由于库未加载完毕:", err);
 }
 
 interface UploaderProps {
@@ -25,6 +28,10 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const extractPdfText = async (arrayBuffer: ArrayBuffer): Promise<string> => {
+    if (!pdfjsLib || !pdfjsLib.getDocument) {
+      throw new Error("PDF 引擎尚未就绪，请稍后刷新重试。");
+    }
+
     const loadingTask = pdfjsLib.getDocument({ 
       data: arrayBuffer,
       cMapUrl: 'https://unpkg.com/pdfjs-dist@4.10.38/cmaps/', 
@@ -40,10 +47,7 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
     for (let i = 1; i <= maxPages; i++) {
       try {
         const page = await pdf.getPage(i);
-        const textContent = await (page as any).getTextContent({
-          includeMarkedContent: true,
-          disableCombineTextItems: false
-        });
+        const textContent = await (page as any).getTextContent();
         
         let lastY = -1;
         let pageLines: string[] = [];
@@ -68,13 +72,15 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
     }
     
     const finalResult = fullText.trim();
-    if (finalResult.length < pdf.numPages * 10) {
-      throw new Error("该 PDF 可能是扫描图片或受强力加密保护。您可以尝试直接上传 PDF 的截图图片。");
+    if (finalResult.length < 50 && pdf.numPages > 0) {
+      throw new Error("该 PDF 可能是扫描图片或受限。请尝试截图后直接上传图片进行 OCR 识别。");
     }
     return finalResult;
   };
 
   const extractEpubText = async (arrayBuffer: ArrayBuffer): Promise<{ text: string, title: string, author: string }> => {
+    if (!e) throw new Error("EPUB 引擎加载失败。");
+    
     // @ts-ignore
     const book = e(arrayBuffer);
     const bookObj = book as any;
@@ -82,7 +88,7 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
     try {
       await bookObj.opened;
     } catch (err) {
-      throw new Error("EPUB 文件无法打开，可能已损坏或受 DRM 保护。");
+      throw new Error("EPUB 文件解析失败，可能格式有误。");
     }
     
     const metadata = bookObj.package?.metadata || {};
@@ -103,8 +109,6 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
           if (contentNode && contentNode.body) {
             const trash = contentNode.body.querySelectorAll('script, style, link, meta');
             trash.forEach((s: any) => s.remove());
-            
-            // To support images in EPUB eventually, we could handle <img> tags here
             const text = contentNode.body.innerText || contentNode.body.textContent || "";
             fullText += text.split('\n').map(l => l.trim()).filter(l => l).join('\n\n') + '\n\n';
           }
@@ -133,20 +137,19 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
         reader.onload = async (event) => {
           try {
             const base64Data = event.target?.result as string;
-            // Use Gemini to OCR the image
             const transcribedText = await ocrImage(base64Data, file.type);
             
             onUpload({
-              id: Math.random().toString(36).substr(2, 9),
+              id: Math.random().toString(36).substring(2, 11),
               title: `图片: ${file.name.replace(/\.[^/.]+$/, "")}`,
               author: '视觉识别',
               content: transcribedText,
               type: 'image',
               originalImage: base64Data
             });
-            setIsProcessing(false);
           } catch (err: any) {
             setErrorInfo({ msg: `AI 识别失败: ${err.message}`, type: 'error' });
+          } finally {
             setIsProcessing(false);
           }
         };
@@ -158,15 +161,15 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
             const arrayBuffer = event.target?.result as ArrayBuffer;
             const result = await extractEpubText(arrayBuffer);
             onUpload({
-              id: Math.random().toString(36).substr(2, 9),
+              id: Math.random().toString(36).substring(2, 11),
               title: result.title,
               author: result.author,
               content: result.text,
               type: 'epub'
             });
-            setIsProcessing(false);
           } catch (err: any) {
             setErrorInfo({ msg: err.message, type: 'error' });
+          } finally {
             setIsProcessing(false);
           }
         };
@@ -178,15 +181,15 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
             const arrayBuffer = event.target?.result as ArrayBuffer;
             const content = await extractPdfText(arrayBuffer);
             onUpload({
-              id: Math.random().toString(36).substr(2, 9),
+              id: Math.random().toString(36).substring(2, 11),
               title: file.name.replace(/\.[^/.]+$/, ""),
               author: 'PDF 导入',
               content: content,
               type: 'pdf'
             });
-            setIsProcessing(false);
           } catch (err: any) {
             setErrorInfo({ msg: err.message, type: 'error' });
+          } finally {
             setIsProcessing(false);
           }
         };
@@ -200,7 +203,7 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
             text = doc.body.innerText;
           }
           onUpload({
-            id: Math.random().toString(36).substr(2, 9),
+            id: Math.random().toString(36).substring(2, 11),
             title: file.name.replace(/\.[^/.]+$/, ""),
             author: '本地文档',
             content: text,
@@ -210,11 +213,11 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
         };
         reader.readAsText(file);
       } else {
-        setErrorInfo({ msg: "不支持的文件格式。请尝试 EPUB, PDF, 图片或 TXT。", type: 'error' });
+        setErrorInfo({ msg: "不支持的文件格式。", type: 'error' });
         setIsProcessing(false);
       }
     } catch (err) {
-      setErrorInfo({ msg: "处理文件时出错，请重试。", type: 'error' });
+      setErrorInfo({ msg: "文件解析异常。", type: 'error' });
       setIsProcessing(false);
     }
   };
@@ -249,41 +252,38 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`max-w-xl mx-auto mt-10 p-12 border-2 border-dashed rounded-3xl transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden ${
-          isDragging ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 bg-white hover:border-indigo-400'
+        className={`max-w-xl mx-auto mt-10 p-8 md:p-16 border-2 border-dashed rounded-[3rem] transition-all flex flex-col items-center justify-center text-center group relative overflow-hidden ${
+          isDragging ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-white hover:border-indigo-400'
         }`}
       >
         {isProcessing && (
-          <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
+          <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-10 flex flex-col items-center justify-center animate-in fade-in duration-300">
             <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mb-4" />
-            <p className="font-bold text-gray-800 text-lg">正在智能解析中...</p>
-            <p className="text-sm text-gray-400 mt-2 px-10">如果是图片，我们将使用 AI 识别文字内容</p>
+            <p className="font-bold text-gray-800 text-lg">智能解析中...</p>
+            <p className="text-xs text-gray-400 mt-2 px-10">AI 正在努力识别和排版内容</p>
           </div>
         )}
 
-        <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 transition-transform duration-500 ${isDragging ? 'scale-110 bg-indigo-100 text-indigo-600' : 'bg-gray-50 text-gray-400 group-hover:text-indigo-600 group-hover:bg-indigo-50'}`}>
+        <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 transition-all duration-500 ${isDragging ? 'scale-110 bg-indigo-100 text-indigo-600' : 'bg-gray-50 text-gray-400 group-hover:text-indigo-600 group-hover:bg-indigo-50'}`}>
           <Upload className="w-10 h-10" />
         </div>
         
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">添加您的电子书或照片</h2>
-        <p className="text-gray-500 mb-8 max-w-xs mx-auto text-sm leading-relaxed">
-          拖放文件到这里，或点击下方按钮上传。<br/>支持 EPUB, PDF, PNG/JPG, TXT。
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">添加书籍或书页照片</h2>
+        <p className="text-gray-400 mb-8 max-w-xs mx-auto text-sm leading-relaxed">
+          支持 EPUB, PDF, 图片, TXT。<br/>您可以直接拍摄书页照片。
         </p>
         
-        <div className="flex flex-col gap-3">
-          <label className="cursor-pointer bg-indigo-600 text-white px-10 py-3.5 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200 active:scale-95 flex items-center gap-2">
-            <BookIcon className="w-5 h-5" />
-            选择文件
-            <input 
-              ref={fileInputRef}
-              type="file" 
-              className="hidden" 
-              accept=".txt,.md,.html,.htm,.epub,.pdf,image/*" 
-              onChange={handleFileChange} 
-            />
-          </label>
-          <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest">你可以直接上传书页的照片</p>
-        </div>
+        <label className="cursor-pointer bg-indigo-600 text-white px-10 py-3.5 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-95 flex items-center gap-2">
+          <BookIcon className="w-5 h-5" />
+          选择文件
+          <input 
+            ref={fileInputRef}
+            type="file" 
+            className="hidden" 
+            accept=".txt,.md,.html,.htm,.epub,.pdf,image/*" 
+            onChange={handleFileChange} 
+          />
+        </label>
       </div>
 
       {errorInfo && (
@@ -291,11 +291,11 @@ const Uploader: React.FC<UploaderProps> = ({ onUpload }) => {
           errorInfo.type === 'error' ? 'bg-red-50 border-red-100 text-red-800' : 'bg-amber-50 border-amber-100 text-amber-800'
         }`}>
           {errorInfo.type === 'error' ? <ShieldAlert className="w-6 h-6 flex-shrink-0" /> : <AlertCircle className="w-6 h-6 flex-shrink-0" />}
-          <div>
-            <p className="font-bold mb-1">{errorInfo.type === 'error' ? '解析失败' : '特别提醒'}</p>
-            <p className="text-sm leading-relaxed opacity-90">{errorInfo.msg}</p>
-            <button onClick={() => setErrorInfo(null)} className="mt-3 text-xs font-bold underline">关闭提示</button>
+          <div className="flex-1">
+            <p className="font-bold text-sm mb-1">{errorInfo.type === 'error' ? '导入失败' : '提醒'}</p>
+            <p className="text-xs leading-relaxed opacity-90">{errorInfo.msg}</p>
           </div>
+          <button onClick={() => setErrorInfo(null)} className="text-xs font-black uppercase opacity-50 hover:opacity-100 transition-opacity">OK</button>
         </div>
       )}
     </div>
