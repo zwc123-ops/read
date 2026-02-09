@@ -113,6 +113,29 @@ const AnalysisSidebar: React.FC<AnalysisSidebarProps> = ({ result, onClose, load
                     </div>
                   </section>
                 )}
+
+                {/* Grounding Sources */}
+                {result.data.sources && result.data.sources.length > 0 && (
+                  <section>
+                    <h4 className="flex items-center gap-2 text-[10px] font-black text-gray-400 mb-4 uppercase tracking-[0.2em]">
+                      <Globe className="w-3.5 h-3.5 text-indigo-400" /> 参考来源
+                    </h4>
+                    <div className="space-y-2">
+                      {result.data.sources.map((source, i) => (
+                        <a 
+                          key={i} 
+                          href={source.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors group"
+                        >
+                          <span className="text-xs text-gray-600 font-medium truncate flex-1">{source.title}</span>
+                          <ExternalLink className="w-3 h-3 text-gray-400 group-hover:text-indigo-500 transition-colors" />
+                        </a>
+                      ))}
+                    </div>
+                  </section>
+                )}
               </div>
             ) : result?.type === 'sentence' ? (
               <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -146,6 +169,29 @@ const AnalysisSidebar: React.FC<AnalysisSidebarProps> = ({ result, onClose, load
                     ))}
                   </div>
                 </section>
+
+                {/* Grounding Sources */}
+                {result.data.sources && result.data.sources.length > 0 && (
+                  <section>
+                    <h4 className="flex items-center gap-2 text-[10px] font-black text-gray-400 mb-4 uppercase tracking-[0.2em]">
+                      <Globe className="w-3.5 h-3.5 text-indigo-400" /> 参考来源
+                    </h4>
+                    <div className="space-y-2">
+                      {result.data.sources.map((source, i) => (
+                        <a 
+                          key={i} 
+                          href={source.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors group"
+                        >
+                          <span className="text-xs text-gray-600 font-medium truncate flex-1">{source.title}</span>
+                          <ExternalLink className="w-3 h-3 text-gray-400 group-hover:text-indigo-500 transition-colors" />
+                        </a>
+                      ))}
+                    </div>
+                  </section>
+                )}
               </div>
             ) : null}
           </div>
